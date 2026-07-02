@@ -8,54 +8,36 @@ on:
       - master
 
 jobs:
-  build-apk:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Show files
-        run: |
-          echo "Repo files:"
-          ls -la
-          echo "Looking for app_src:"
-          find . -maxdepth 4 -type d -name app_src
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
-      - name: Create Flutter project and copy app source
-        run: |
-          APP_SRC=$(find . -type d -name app_src | head -n 1)
-          if [ -z "$APP_SRC" ]; then
-            echo "ERROR: app_src folder not found."
-            echo "Your repo must contain app_src/lib and app_src/pubspec.yaml"
-            exit 1
-          fi
+      - name: Show files
+        run: ls -la
 
-          echo "Using app source: $APP_SRC"
-          flutter create edutrack_app
-          cp -a "$APP_SRC"/. edutrack_app/
+      - name: Create Flutter project
+        run: flutter create edutrack_app
 
-      - name: Get dependencies
+      - name: Copy app source
+        run: cp -a app_src/. edutrack_app/
+
+      - name: Get packages
         working-directory: edutrack_app
         run: flutter pub get
 
-      - name: Build debug APK
+      - name: Build APK
         working-directory: edutrack_app
         run: flutter build apk --debug
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: edutrack-debug-apk
-          path: edutrack_app/build/app/outputs/flutter-apk/app-debug.apk        working-directory: edutrack_app
-        run: flutter build apk --debug
-
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: edutrack-debug-apk
