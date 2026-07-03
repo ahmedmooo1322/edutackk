@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout project
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Java 17
@@ -21,16 +21,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK
+      - name: Setup Android
         uses: android-actions/setup-android@v3
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-
-      - name: Show Flutter version
-        run: flutter --version
 
       - name: Install Android SDK 36
         run: |
@@ -39,28 +36,19 @@ jobs:
           yes | sdkmanager --licenses || true
 
       - name: Create Flutter project
-        run: |
-          flutter create edutrack_app --platforms=android --org com.edutrack --project-name edutrack_app
+        run: flutter create edutrack_app --platforms=android --org com.edutrack --project-name edutrack_app
 
-      - name: Copy EduTrack app source
-        run: |
-          cp -R app_src/. edutrack_app/
+      - name: Copy app source
+        run: cp -R app_src/. edutrack_app/
 
-      - name: Patch Android SDK versions
+      - name: Patch app Android SDK
         run: |
           python3 <<'PY'
           from pathlib import Path
           import re
-
-          files = [
-              Path("edutrack_app/android/app/build.gradle.kts"),
-              Path("edutrack_app/android/app/build.gradle"),
-          ]
-
-          for file in files:
+          for file in [Path("edutrack_app/android/app/build.gradle.kts"), Path("edutrack_app/android/app/build.gradle")]:
               if not file.exists():
                   continue
-
               text = file.read_text()
               text = re.sub(r"compileSdk\s*=\s*[^\n]+", "compileSdk = 36", text)
               text = re.sub(r"targetSdk\s*=\s*[^\n]+", "targetSdk = 36", text)
@@ -70,21 +58,16 @@ jobs:
               print("Patched", file)
           PY
 
-      - name: Get Flutter packages
+      - name: Get packages
         working-directory: edutrack_app
         run: flutter pub get
 
-      - name: Patch plugin Android SDK versions
+      - name: Patch plugin Android SDK
         run: |
           python3 <<'PY'
           from pathlib import Path
           import re
-
-          roots = [
-              Path.home() / ".pub-cache",
-              Path("/opt/hostedtoolcache"),
-          ]
-
+          roots = [Path.home() / ".pub-cache", Path("/opt/hostedtoolcache")]
           patterns = [
               "**/file_picker*/android/build.gradle",
               "**/file_picker*/android/build.gradle.kts",
@@ -92,45 +75,37 @@ jobs:
               "**/flutter_plugin_android_lifecycle*/android/build.gradle.kts",
               "**/url_launcher_android*/android/build.gradle",
               "**/url_launcher_android*/android/build.gradle.kts",
-              "**/shared_preferences_android*/android/build.gradle",
-              "**/shared_preferences_android*/android/build.gradle.kts",
-              "**/path_provider_android*/android/build.gradle",
-              "**/path_provider_android*/android/build.gradle.kts",
           ]
-
           patched = []
-
           for root in roots:
               if not root.exists():
                   continue
-
               for pattern in patterns:
                   for file in root.glob(pattern):
-                      try:
-                          text = file.read_text()
-                      except Exception:
-                          continue
-
-                      new = text
-                      new = re.sub(r"compileSdk\s*=\s*[^\n]+", "compileSdk = 36", new)
+                      text = file.read_text()
+                      new = re.sub(r"compileSdk\s*=\s*[^\n]+", "compileSdk = 36", text)
                       new = re.sub(r"compileSdk\s+\d+", "compileSdk 36", new)
                       new = re.sub(r"compileSdkVersion\s+[^\n]+", "compileSdkVersion 36", new)
-
                       if new != text:
                           file.write_text(new)
                           patched.append(str(file))
-
           print("Patched plugin files:")
           for item in patched:
               print(item)
           PY
 
-      - name: Build debug APK
+      - name: Build split debug APKs
         working-directory: edutrack_app
-        run: flutter build apk --debug
+        run: flutter build apk --debug --split-per-abi
 
-      - name: Upload debug APK
+      - name: Upload ARM64 debug APK only
         uses: actions/upload-artifact@v4
         with:
-          name: edutrack-debug-apk
-          path: edutrack_app/build/app/outputs/flutter-apk/app-debug.apk
+          name: edutrack-arm64-debug-apk
+          path: edutrack_app/build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
+
+      - name: Upload all split APKs backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: edutrack-all-debug-apks
+          path: edutrack_app/build/app/outputs/flutter-apk/*.apk
