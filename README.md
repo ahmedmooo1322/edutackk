@@ -198,3 +198,11 @@ This APK package is based on the V6 line only. Do not use V7 as a base.
 - Student can open submitted quiz read-only.
 - Teacher can open student answers from results.
 - Undone quiz counter shown for students.
+
+## V6.7 APK stability patch
+
+Version: `0.1.4+14`
+
+Adds cache fallback for GET data, teacher message requests, teacher My Students, manual quiz grading UI, profile edit request UI, safer teacher-student connection validation, and profile pictures in quiz results.
+
+GitHub Actions remains debug/unsigned with split-per-ABI and arm64 artifact.
