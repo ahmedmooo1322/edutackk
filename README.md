@@ -170,3 +170,31 @@ GitHub Actions still builds debug APK only; no signing secrets required.
 - Added separate Create teacher account button on login.
 - Register page opens directly as teacher signup when launched from teacher button, while still allowing role selection.
 - Debug/unsigned APK build kept.
+
+## V6.6 RC stability notes
+
+This APK package is based on the V6 line only. Do not use V7 as a base.
+
+### APK build
+
+- Debug/unsigned build only.
+- No keystore or GitHub secrets required.
+- Android SDK 36 plugin patch is kept.
+- Split-per-ABI is enabled to reduce download size.
+- Download `edutrack-arm64-debug-apk` / `app-arm64-v8a-debug.apk` for most Android phones.
+- App version is `0.1.3+13`.
+
+### Included in V6.6 RC
+
+- Restored safe login/register behavior.
+- Clear teacher signup path.
+- Teacher signup name placeholder says Teacher name.
+- Pending users can access AI chat/profile/WhatsApp activation only.
+- Teacher can access profile, friends/search, add/remove friends, private chat, block/report.
+- Teacher profile uses Teacher no.
+- Quizzes section includes teacher Connect student by username/phone.
+- Teacher can remove questions while creating quiz.
+- Teacher chooses automatic/manual scoring.
+- Student can open submitted quiz read-only.
+- Teacher can open student answers from results.
+- Undone quiz counter shown for students.
