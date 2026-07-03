@@ -206,3 +206,9 @@ Version: `0.1.4+14`
 Adds cache fallback for GET data, teacher message requests, teacher My Students, manual quiz grading UI, profile edit request UI, safer teacher-student connection validation, and profile pictures in quiz results.
 
 GitHub Actions remains debug/unsigned with split-per-ABI and arm64 artifact.
+
+## V6.7.1 / 0.1.5 build fix
+
+Fixes Flutter compile failure caused by duplicate `name` keys inside the constant localization map in `app_src/lib/i18n/app_strings.dart`.
+
+Version bumped to `0.1.5+15`.
