@@ -111,7 +111,7 @@ class _EduTrackAppState extends State<EduTrackApp> {
                   useMaterial3: true,
                   pageTransitionsTheme: PageTransitionsTheme(builders: {
                     TargetPlatform.android: ZoomPageTransitionsBuilder(),
-                    TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
+                   
                   }),
                   cardTheme: CardThemeData(
                     elevation: 1.5,
