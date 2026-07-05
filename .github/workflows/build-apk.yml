@@ -16,6 +16,21 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
+      - name: Find Flutter project
+        run: |
+          PUBSPEC_PATH=$(find . -maxdepth 5 -name pubspec.yaml | head -n 1)
+
+          if [ -z "$PUBSPEC_PATH" ]; then
+            echo "Could not find pubspec.yaml"
+            echo "Repo files:"
+            find . -maxdepth 3 -type f | sort
+            exit 1
+          fi
+
+          FLUTTER_PROJECT_DIR=$(dirname "$PUBSPEC_PATH")
+          echo "FLUTTER_PROJECT_DIR=$FLUTTER_PROJECT_DIR" >> $GITHUB_ENV
+          echo "Flutter project found at: $FLUTTER_PROJECT_DIR"
+
       - name: Validate signing secrets
         run: |
           if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
@@ -57,12 +72,12 @@ jobs:
 
       - name: Restore Android keystore
         run: |
-          mkdir -p android/app
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | tr -d '\n' | base64 --decode > android/app/edutrack-release-key.jks
+          mkdir -p "$FLUTTER_PROJECT_DIR/android/app"
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | tr -d '\n' | base64 --decode > "$FLUTTER_PROJECT_DIR/android/app/edutrack-release-key.jks"
 
       - name: Create key.properties
         run: |
-          cat > android/key.properties <<EOF
+          cat > "$FLUTTER_PROJECT_DIR/android/key.properties" <<EOF
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
@@ -71,30 +86,34 @@ jobs:
 
       - name: Check signing files
         run: |
-          test -f android/app/edutrack-release-key.jks
-          test -f android/key.properties
+          test -f "$FLUTTER_PROJECT_DIR/android/app/edutrack-release-key.jks"
+          test -f "$FLUTTER_PROJECT_DIR/android/key.properties"
           echo "Keystore and key.properties created."
 
       - name: Install dependencies
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
         run: flutter pub get
 
       - name: Analyze Flutter project
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
         run: flutter analyze
 
       - name: Build signed release APK
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
         run: flutter build apk --release
 
       - name: Build release AAB
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
         run: flutter build appbundle --release
 
       - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: edutrack-signed-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: ${{ env.FLUTTER_PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
 
       - name: Upload release AAB artifact
         uses: actions/upload-artifact@v4
         with:
           name: edutrack-release-aab
-          path: build/app/outputs/bundle/release/app-release.aab
+          path: ${{ env.FLUTTER_PROJECT_DIR }}/build/app/outputs/bundle/release/app-release.aab
