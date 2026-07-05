@@ -1,0 +1,214 @@
+# EduTrack Task 2 APK — GitHub Ready v2
+
+## Build note
+
+This package uses an unsigned/debug APK workflow. No keystore or GitHub signing secrets are required.
+
+
+
+Flutter Android MVP for the EduTrack student app.
+
+## What changed in v2
+
+- Login fields are blank by default.
+- App name after installing: `EduTrack`.
+- Added nicer EduTrack logo in the app and a custom Android launcher icon.
+- Added Arabic/English language toggle in Settings.
+- Added Profile page with student DB ID, public ID, stage, grade, progress, and subscription data.
+- App renders even when subscription is not activated.
+- Inactive subscription is shown as `Free Plan` with 3 AI messages/day.
+- Registration stage/level rules:
+  - Primary = 6 levels
+  - Preparatory = 3 levels
+  - Secondary = 3 levels
+- Arabic grade names include:
+  - الصف الاول الاعدادي
+  - الصف الثاني الاعدادي
+  - الصف الثالث الاعدادي
+  - الصف الاول الثانوي
+  - الصف الثاني الثانوي
+  - الصف الثالث الثانوي
+- GitHub Actions workflow builds APK without needing Windows Flutter/Android Studio.
+
+## Default backend
+
+```text
+https://ai.elbahet-sm.com
+```
+
+You can change it inside app Settings.
+
+## Build on GitHub
+
+Upload this repo to GitHub, then open:
+
+```text
+Actions → Build EduTrack APK → Run workflow
+```
+
+Download artifact:
+
+```text
+edutrack-debug-apk
+```
+
+Install:
+
+```text
+app-debug.apk
+```
+
+## Expected root files
+
+```text
+.github/workflows/build-apk.yml
+app_src/
+docs/
+tools/
+README.md
+```
+
+Do not upload the whole folder inside another folder. `app_src` must be at repo root.
+
+## v3 loading fix
+
+This package fixes the first-open/login/register/settings infinite loading issue by moving initial screen loads to a safe Flutter lifecycle path and by making Settings render immediately. It also keeps the free-plan behavior: inactive subscription users can enter the app and use the 3-message/day free limit.
+
+Build with GitHub Actions as before.
+
+
+## v4 message display fix
+- Chat bubbles now allow wider text, explicit RTL/LTR direction, line height, and unlimited lines.
+- Rebuild APK after uploading this version to GitHub.
+
+## v5 Community + Loading/History Fix
+
+New APK features:
+- AI chat loads saved history from backend: last 20 messages, then Load more 50-by-50.
+- AI chat shows daily remaining messages in Arabic/English.
+- Dark mode in Settings and quick toggle in AI Chat.
+- API Base URL is hidden behind Admin API key verification.
+- Registration includes phone and username.
+- Primary stage hidden for now; only Preparatory and Secondary are shown.
+- Level room, student search, friend requests, friends list, private chat, report/block actions.
+- Photo/PDF attachment picker for level room and private chat, max 10 MB enforced by backend.
+
+Build using GitHub Actions as before.
+
+
+## v5.1 GitHub build fix
+
+This package fixes the GitHub Actions Android build failure caused by `flutter_plugin_android_lifecycle` / `file_picker` requiring Android compile SDK 35.
+
+The workflow now:
+
+- installs Android SDK platform 35
+- creates the Flutter Android project
+- forces `compileSdk = 35` and `targetSdk = 35` before building
+
+No backend or database change is needed for this APK-only build fix.
+
+
+## v6 UI
+
+Adds bottom navigation, profile photo upload, friends/search merged tab, inbox with pinned level room and message requests.
+
+
+## V6.1 safe patch
+
+This APK package is based on V6 UI/community, not V7.
+
+It keeps the Android SDK 36 GitHub Actions workflow that already worked, and applies only the requested UI/upload/back-button/settings fixes.
+
+## V6.3 signed release + inline media patch
+
+Based on V6.2 / V6.1 line, not V7.
+
+Changes:
+- Chat photos render inline inside private chats and level rooms.
+- Tapping a photo opens full-screen preview.
+- PDFs show as file cards and open externally.
+- Friend profile action now shows Unfriend when already friends, and Request already sent when pending.
+- GitHub Actions now builds a debug APK.
+
+Required GitHub Secrets for signed release build:
+
+```text
+KEYSTORE_BASE64
+KEYSTORE_PASSWORD
+KEY_ALIAS
+KEY_PASSWORD
+```
+
+Artifact name:
+
+```text
+edutrack-debug-apk
+```
+
+APK output:
+
+```text
+app-debug.apk
+```
+
+
+## v6.4 WhatsApp/settings patch
+
+This build keeps debug/unsigned APK output and adds a Settings button to contact admin on WhatsApp for activation. The phone number and message are controlled from the admin panel/backend settings.
+
+## V6.5 Teacher Quiz System APK
+
+Adds teacher signup, quizzes section in Inbox, teacher quiz tools, student quiz taking, and a global floating WhatsApp activation button.
+
+GitHub Actions still builds debug APK only; no signing secrets required.
+
+
+## V6.5.2 quick fixes
+- Removed global WhatsApp overlay from auth pages to fix red/tinted login screen.
+- WhatsApp floating button is now only attached inside the logged-in Home shell.
+- Added separate Create teacher account button on login.
+- Register page opens directly as teacher signup when launched from teacher button, while still allowing role selection.
+- Debug/unsigned APK build kept.
+
+## V6.6 RC stability notes
+
+This APK package is based on the V6 line only. Do not use V7 as a base.
+
+### APK build
+
+- Debug/unsigned build only.
+- No keystore or GitHub secrets required.
+- Android SDK 36 plugin patch is kept.
+- Split-per-ABI is enabled to reduce download size.
+- Download `edutrack-arm64-debug-apk` / `app-arm64-v8a-debug.apk` for most Android phones.
+- App version is `0.1.3+13`.
+
+### Included in V6.6 RC
+
+- Restored safe login/register behavior.
+- Clear teacher signup path.
+- Teacher signup name placeholder says Teacher name.
+- Pending users can access AI chat/profile/WhatsApp activation only.
+- Teacher can access profile, friends/search, add/remove friends, private chat, block/report.
+- Teacher profile uses Teacher no.
+- Quizzes section includes teacher Connect student by username/phone.
+- Teacher can remove questions while creating quiz.
+- Teacher chooses automatic/manual scoring.
+- Student can open submitted quiz read-only.
+- Teacher can open student answers from results.
+- Undone quiz counter shown for students.
+
+## V6.7 APK stability patch
+
+Version: `0.1.4+14`
+
+Adds cache fallback for GET data, teacher message requests, teacher My Students, manual quiz grading UI, profile edit request UI, safer teacher-student connection validation, and profile pictures in quiz results.
+
+GitHub Actions remains debug/unsigned with split-per-ABI and arm64 artifact.
+
+## V6.7.1 / 0.1.5 build fix
+
+Fixes Flutter compile failure caused by duplicate `name` keys inside the constant localization map in `app_src/lib/i18n/app_strings.dart`.
+
+Version bumped to `0.1.5+15`.
