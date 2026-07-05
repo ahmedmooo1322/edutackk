@@ -4,7 +4,7 @@
     <application
         android:label="EduTrack"
         android:name="${applicationName}"
-        android:icon="@drawable/edutrack_icon"
+        android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"

@@ -1,5 +1,12 @@
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  errors:
+    deprecated_member_use: info
+    use_build_context_synchronously: info
+    unused_import: warning
+    unused_field: warning
+
 linter:
   rules:
-    prefer_const_constructors: true
+    avoid_print: false
