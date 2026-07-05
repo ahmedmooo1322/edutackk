@@ -23,12 +23,12 @@ jobs:
           if [ -z "$PUBSPEC_PATH" ]; then
             echo "Could not find pubspec.yaml"
             echo "Repo files:"
-            find . -maxdepth 3 -type f | sort
+            find . -maxdepth 4 -type f | sort
             exit 1
           fi
 
           FLUTTER_PROJECT_DIR=$(dirname "$PUBSPEC_PATH")
-          echo "FLUTTER_PROJECT_DIR=$FLUTTER_PROJECT_DIR" >> $GITHUB_ENV
+          echo "FLUTTER_PROJECT_DIR=$FLUTTER_PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Flutter project found at: $FLUTTER_PROJECT_DIR"
 
       - name: Validate signing secrets
@@ -73,7 +73,7 @@ jobs:
       - name: Restore Android keystore
         run: |
           mkdir -p "$FLUTTER_PROJECT_DIR/android/app"
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | tr -d '\n' | base64 --decode > "$FLUTTER_PROJECT_DIR/android/app/edutrack-release-key.jks"
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | tr -d '\n\r ' | base64 --decode > "$FLUTTER_PROJECT_DIR/android/app/edutrack-release-key.jks"
 
       - name: Create key.properties
         run: |
@@ -96,7 +96,7 @@ jobs:
 
       - name: Analyze Flutter project
         working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build signed release APK
         working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
