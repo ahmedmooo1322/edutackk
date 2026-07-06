@@ -1,0 +1,23 @@
+name: edutrack_app
+version: 0.1.9+20
+publish_to: 'none'
+description: EduTrack Android APK MVP connected to Task 1 backend.
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  shared_preferences: ^2.3.2
+  file_picker: ^8.1.7
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
