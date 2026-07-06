@@ -1,6 +1,6 @@
 name: Build Signed EduTrack APK
 
-"on":
+on:
   workflow_dispatch:
   push:
     branches:
@@ -16,28 +16,22 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Find Flutter project
+      - name: Validate EduTrack app source
         run: |
-          PUBSPEC_PATH=$(find . -maxdepth 5 -name pubspec.yaml | head -n 1)
-          if [ -z "$PUBSPEC_PATH" ]; then
-            echo "Could not find pubspec.yaml"
+          if [ ! -f "app_src/pubspec.yaml" ]; then
+            echo "Expected app_src/pubspec.yaml but it was not found."
+            echo "Repo files:"
+            find . -maxdepth 5 -type f | sort
             exit 1
           fi
-          FLUTTER_PROJECT_DIR=$(dirname "$PUBSPEC_PATH")
-          echo "FLUTTER_PROJECT_DIR=$FLUTTER_PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Flutter project found at: $FLUTTER_PROJECT_DIR"
+          echo "EduTrack app source found at app_src."
 
       - name: Validate signing secrets
-        env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          test -n "$KEYSTORE_B64" || (echo "Missing ANDROID_KEYSTORE_BASE64" && exit 1)
-          test -n "$KEYSTORE_PASS" || (echo "Missing ANDROID_KEYSTORE_PASSWORD" && exit 1)
-          test -n "$KEY_ALIAS" || (echo "Missing ANDROID_KEY_ALIAS" && exit 1)
-          test -n "$KEY_PASS" || (echo "Missing ANDROID_KEY_PASSWORD" && exit 1)
+          test -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" || (echo "Missing secret: ANDROID_KEYSTORE_BASE64" && exit 1)
+          test -n "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" || (echo "Missing secret: ANDROID_KEYSTORE_PASSWORD" && exit 1)
+          test -n "${{ secrets.ANDROID_KEY_ALIAS }}" || (echo "Missing secret: ANDROID_KEY_ALIAS" && exit 1)
+          test -n "${{ secrets.ANDROID_KEY_PASSWORD }}" || (echo "Missing secret: ANDROID_KEY_PASSWORD" && exit 1)
           echo "Signing secrets found."
 
       - name: Setup Java
@@ -45,6 +39,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -55,82 +52,141 @@ jobs:
       - name: Flutter version
         run: flutter --version
 
-      - name: Install dependencies
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: flutter pub get
-
-      - name: Recreate clean Android v2 project
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
+      - name: Install Android SDK 36
         run: |
-          rm -rf android
-          flutter create --platforms=android --project-name edutrack_app --org com.edutrack .
-          if grep -R "io\.flutter\.app\.FlutterActivity\|io\.flutter\.app\.FlutterApplication" android/app/src -n; then
-            echo "Old v1 embedding reference found."
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+          yes | sdkmanager --licenses || true
+
+      - name: Create clean Flutter Android v2 project
+        run: |
+          rm -rf edutrack_app
+          # Create project in a temporary directory to avoid "Already watching path" issue
+          mkdir -p tmp_project
+          cd tmp_project
+          flutter create edutrack_app --platforms=android --org com.edutrack --project-name edutrack_app
+          cd ..
+          mv tmp_project/edutrack_app edutrack_app
+          rm -rf tmp_project
+
+      - name: Copy EduTrack app source
+        run: |
+          rm -rf edutrack_app/lib
+          cp -R app_src/lib edutrack_app/lib
+          cp app_src/pubspec.yaml edutrack_app/pubspec.yaml
+
+          if [ -f app_src/analysis_options.yaml ]; then
+            cp app_src/analysis_options.yaml edutrack_app/analysis_options.yaml
+          fi
+
+          if [ -d app_src/android/app/src/main/res ]; then
+            cp -R app_src/android/app/src/main/res/. edutrack_app/android/app/src/main/res/
+          fi
+
+      - name: Force Android v2 embedding
+        run: |
+          mkdir -p edutrack_app/android/app/src/main/kotlin/com/edutrack/edutrack_app
+          cat > edutrack_app/android/app/src/main/kotlin/com/edutrack/edutrack_app/MainActivity.kt <<'EOF'
+          package com.edutrack.edutrack_app
+
+          import io.flutter.embedding.android.FlutterActivity
+
+          class MainActivity : FlutterActivity()
+          EOF
+
+          cat > edutrack_app/android/app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+
+              <application
+                  android:label="EduTrack"
+                  android:name="${applicationName}"
+                  android:icon="@drawable/edutrack_icon"
+                  android:usesCleartextTraffic="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:theme="@style/LaunchTheme"
+                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+                      android:hardwareAccelerated="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <meta-data
+                          android:name="io.flutter.embedding.android.NormalTheme"
+                          android:resource="@style/NormalTheme" />
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+                  <meta-data
+                      android:name="flutterEmbedding"
+                      android:value="2" />
+              </application>
+
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.PROCESS_TEXT" />
+                      <data android:mimeType="text/plain" />
+                  </intent>
+              </queries>
+          </manifest>
+          EOF
+
+          if [ ! -f edutrack_app/android/app/src/main/res/drawable/edutrack_icon.xml ]; then
+            sed -i 's/@drawable\/edutrack_icon/@mipmap\/ic_launcher/g' edutrack_app/android/app/src/main/AndroidManifest.xml
+          fi
+
+          echo "Checking for deleted Android v1 embedding references..."
+          if grep -R "io.flutter.app.FlutterActivity\|io.flutter.app.FlutterApplication\|GeneratedPluginRegistrant" -n edutrack_app/android; then
+            echo "Found deleted Android v1 embedding references."
             exit 1
           fi
-          echo "Android v2 project created successfully."
+          echo "Android v2 embedding check passed."
 
-      - name: Restore Android keystore
-        env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      - name: Restore release keystore
         run: |
-          mkdir -p "$FLUTTER_PROJECT_DIR/android/app"
-          echo "$KEYSTORE_B64" | tr -d '\n\r ' | base64 --decode > "$FLUTTER_PROJECT_DIR/android/app/edutrack-release-key.jks"
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | tr -d '\n\r ' | base64 --decode > edutrack_app/android/app/edutrack-release-key.jks
+          cat > edutrack_app/android/key.properties <<EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=edutrack-release-key.jks
+          EOF
+          keytool -list -keystore edutrack_app/android/app/edutrack-release-key.jks -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" -alias "${{ secrets.ANDROID_KEY_ALIAS }}"
 
-      - name: Create key.properties
-        env:
-          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      - name: Patch Android SDK and release signing
         run: |
-          printf "storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=edutrack-release-key.jks\n" \
-            "$KEYSTORE_PASS" "$KEY_PASS" "$KEY_ALIAS" \
-            > "$FLUTTER_PROJECT_DIR/android/key.properties"
-
-      - name: Patch Gradle signing and compileSdk
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: |
-          python3 - <<'PY'
+          python3 <<'PY'
           from pathlib import Path
           import re
 
-          # Bump compileSdk and targetSdk
-          for filename in ["android/app/build.gradle.kts", "android/app/build.gradle"]:
-              f = Path(filename)
-              if not f.exists():
-                  continue
-              text = f.read_text()
-              text = re.sub(r'compileSdk\s*=\s*\d+', 'compileSdk = 36', text)
-              text = re.sub(r'targetSdk\s*=\s*\d+', 'targetSdk = 36', text)
-              text = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 36', text)
-              text = re.sub(r'targetSdkVersion\s+\d+', 'targetSdkVersion 36', text)
-              f.write_text(text)
-              print(f"SDK bumped in {filename}")
+          app_dir = Path('edutrack_app/android/app')
+          kts = app_dir / 'build.gradle.kts'
+          groovy = app_dir / 'build.gradle'
 
-          # Patch signing config
-          gradle = Path("android/app/build.gradle")
-          if not gradle.exists():
-              gradle = Path("android/app/build.gradle.kts")
-
-          text = gradle.read_text()
-
-          if gradle.name.endswith(".kts"):
-              print("Kotlin Gradle detected.")
-              if "key.properties" not in text:
-                  text = """import java.util.Properties
-          import java.io.FileInputStream
-
+          if kts.exists():
+              text = kts.read_text()
+              if 'java.util.Properties' not in text:
+                  text = 'import java.util.Properties\nimport java.io.FileInputStream\n\n' + text
+              if 'val keystoreProperties' not in text:
+                  insert = '''
           val keystoreProperties = Properties()
           val keystorePropertiesFile = rootProject.file("key.properties")
           if (keystorePropertiesFile.exists()) {
               keystoreProperties.load(FileInputStream(keystorePropertiesFile))
           }
 
-          """ + text
-              if "create(\"release\")" not in text:
+          '''
+                  text = text.replace('plugins {', insert + 'plugins {', 1)
+
+              text = re.sub(r'compileSdk\s*=\s*[^\n]+', 'compileSdk = 36', text)
+              text = re.sub(r'targetSdk\s*=\s*[^\n]+', 'targetSdk = 36', text)
+
+              if 'create("release")' not in text:
                   text = text.replace(
-                      "android {",
-                      """android {
+                      'android {',
+                      '''android {
               signingConfigs {
                   create("release") {
                       keyAlias = keystoreProperties["keyAlias"] as String
@@ -139,69 +195,137 @@ jobs:
                       storePassword = keystoreProperties["storePassword"] as String
                   }
               }
-          """, 1)
-              text = text.replace(
-                  "signingConfig = signingConfigs.getByName(\"debug\")",
-                  "signingConfig = signingConfigs.getByName(\"release\")"
+          ''',
+                      1,
+                  )
+
+              text = re.sub(
+                  r'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)',
+                  'signingConfig = signingConfigs.getByName("release")',
+                  text,
               )
-          else:
-              print("Groovy Gradle detected.")
-              if "keystoreProperties" not in text:
-                  text = """def keystoreProperties = new Properties()
+              if 'signingConfig = signingConfigs.getByName("release")' not in text:
+                  text = re.sub(
+                      r'getByName\("release"\)\s*\{',
+                      'getByName("release") {\n            signingConfig = signingConfigs.getByName("release")',
+                      text,
+                  )
+              kts.write_text(text)
+              print('Patched', kts)
+
+          elif groovy.exists():
+              text = groovy.read_text()
+              if 'keystoreProperties' not in text:
+                  pre = '''def keystoreProperties = new Properties()
           def keystorePropertiesFile = rootProject.file('key.properties')
           if (keystorePropertiesFile.exists()) {
               keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
           }
 
-          """ + text
-              if "signingConfigs" not in text:
+          '''
+                  text = pre + text
+              text = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 36', text)
+              text = re.sub(r'targetSdkVersion\s+\d+', 'targetSdkVersion 36', text)
+              text = re.sub(r'compileSdk\s+\d+', 'compileSdk 36', text)
+              if 'signingConfigs' not in text:
                   text = text.replace(
-                      "android {",
+                      'android {',
                       """android {
               signingConfigs {
                   release {
                       keyAlias keystoreProperties['keyAlias']
                       keyPassword keystoreProperties['keyPassword']
-                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                      storeFile file(keystoreProperties['storeFile'])
                       storePassword keystoreProperties['storePassword']
                   }
-              }
-          """, 1)
-              text = text.replace(
-                  "signingConfig signingConfigs.debug",
-                  "signingConfig signingConfigs.release"
-              )
-
-          gradle.write_text(text)
-          print(f"Signing patched in {gradle}")
+              }""",
+                      1,
+                  )
+              text = re.sub(r'signingConfig\s+signingConfigs\.debug', 'signingConfig signingConfigs.release', text)
+              if 'signingConfig signingConfigs.release' not in text:
+                  text = re.sub(r'release\s*\{', 'release {\n            signingConfig signingConfigs.release', text)
+              groovy.write_text(text)
+              print('Patched', groovy)
+          else:
+              raise SystemExit('No app build.gradle file found after flutter create')
           PY
 
-      - name: Fix widget test
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
+      - name: Install dependencies
+        working-directory: edutrack_app
+        run: flutter pub get
+
+      - name: Fix default widget test
+        working-directory: edutrack_app
         run: |
           mkdir -p test
-          printf "import 'package:flutter_test/flutter_test.dart';\n\nvoid main() {\n  testWidgets('placeholder', (WidgetTester tester) async {\n    expect(true, isTrue);\n  });\n}\n" > test/widget_test.dart
+          cat > test/widget_test.dart <<'EOF'
+          import 'package:flutter_test/flutter_test.dart';
+
+          void main() {
+            testWidgets('EduTrack placeholder widget test', (WidgetTester tester) async {
+              expect(true, isTrue);
+            });
+          }
+          EOF
+
+      - name: Patch plugin Android SDK
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+          roots = [Path.home() / ".pub-cache", Path("/opt/hostedtoolcache")]
+          patterns = [
+              "**/file_picker*/android/build.gradle",
+              "**/file_picker*/android/build.gradle.kts",
+              "**/flutter_plugin_android_lifecycle*/android/build.gradle",
+              "**/flutter_plugin_android_lifecycle*/android/build.gradle.kts",
+              "**/url_launcher_android*/android/build.gradle",
+              "**/url_launcher_android*/android/build.gradle.kts",
+          ]
+          patched = []
+          for root in roots:
+              if not root.exists():
+                  continue
+              for pattern in patterns:
+                  for file in root.glob(pattern):
+                      text = file.read_text()
+                      new = re.sub(r"compileSdk\s*=\s*[^\n]+", "compileSdk = 36", text)
+                      new = re.sub(r"compileSdk\s+\d+", "compileSdk 36", new)
+                      new = re.sub(r"compileSdkVersion\s+[^\n]+", "compileSdkVersion 36", new)
+                      if new != text:
+                          file.write_text(new)
+                          patched.append(str(file))
+          print("Patched plugin files:")
+          for item in patched:
+              print(item)
+          PY
 
       - name: Analyze Flutter project
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
+        working-directory: edutrack_app
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Build signed release APK
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: flutter build apk --release
+      - name: Build signed release APKs
+        working-directory: edutrack_app
+        run: flutter build apk --release --split-per-abi
 
-      - name: Build release AAB
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
+      - name: Build signed release AAB
+        working-directory: edutrack_app
         run: flutter build appbundle --release
 
-      - name: Upload APK artifact
+      - name: Upload ARM64 signed release APK
         uses: actions/upload-artifact@v4
         with:
-          name: edutrack-signed-release-apk
-          path: ${{ env.FLUTTER_PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          name: edutrack-arm64-v8a-release-signed-apk
+          path: edutrack_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 
-      - name: Upload AAB artifact
+      - name: Upload all signed release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: edutrack-all-release-signed-apks
+          path: edutrack_app/build/app/outputs/flutter-apk/*release.apk
+
+      - name: Upload signed release AAB
         uses: actions/upload-artifact@v4
         with:
           name: edutrack-release-aab
-          path: ${{ env.FLUTTER_PROJECT_DIR }}/build/app/outputs/bundle/release/app-release.aab
+          path: edutrack_app/build/app/outputs/bundle/release/app-release.aab
