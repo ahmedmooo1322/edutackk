@@ -141,8 +141,8 @@ jobs:
           echo "Removing auto-generated v1 embedding references..."
           rm -rf edutrack_app/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
           
-          echo "Checking for deleted Android v1 embedding references..."
-          if grep -R "io.flutter.app.FlutterActivity\|io.flutter.app.FlutterApplication\|GeneratedPluginRegistrant" -n edutrack_app/android; then
+          echo "Checking for deleted Android v1 embedding references (excluding .gitignore)..."
+          if grep -R "io.flutter.app.FlutterActivity\|io.flutter.app.FlutterApplication\|GeneratedPluginRegistrant" --exclude="*.gitignore" -n edutrack_app/android; then
             echo "Found deleted Android v1 embedding references."
             exit 1
           fi
