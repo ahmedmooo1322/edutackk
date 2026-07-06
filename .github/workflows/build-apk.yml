@@ -1,212 +1,55 @@
-name: Build Signed EduTrack APK
+Run echo "Deleting old Android folder to remove v1 embedding..."
+Deleting old Android folder to remove v1 embedding...
+Creating clean Android v2 Flutter project...
+Recreating project ....
+  ***_app.iml (created)
+  .gitignore (created)
+  android/gradle/wrapper/gradle-wrapper.properties (created)
+  android/gradle.properties (created)
+  android/settings.gradle.kts (created)
+  android/app/src/main/AndroidManifest.xml (created)
+  android/app/src/main/res/mipmap-xhdpi/ic_launcher.png (created)
+  android/app/src/main/res/mipmap-mdpi/ic_launcher.png (created)
+  android/app/src/main/res/drawable/launch_background.xml (created)
+  android/app/src/main/res/values-night/styles.xml (created)
+  android/app/src/main/res/mipmap-hdpi/ic_launcher.png (created)
+  android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png (created)
+  android/app/src/main/res/values/styles.xml (created)
+  android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png (created)
+  android/app/src/main/res/drawable-v21/launch_background.xml (created)
+  android/app/src/profile/AndroidManifest.xml (created)
+  android/app/src/debug/AndroidManifest.xml (created)
+  android/.gitignore (created)
+  android/build.gradle.kts (created)
+  android/***_app_android.iml (created)
+  android/app/src/main/kotlin/com/***/***_app/MainActivity.kt (created)
+  android/app/build.gradle.kts (created)
+  README.md (created)
+  .idea/runConfigurations/main_dart.xml (created)
+  .idea/workspace.xml (created)
+  .idea/libraries/KotlinJavaRuntime.xml (created)
+  .idea/libraries/Dart_SDK.xml (created)
+  .idea/modules.xml (created)
+Resolving dependencies...
+Downloading packages...
+Got dependencies.
+Wrote 31 files.
 
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-      - master
+All done!
+You can find general documentation for Flutter at: https://docs.flutter.dev/
+Detailed API documentation is available at: https://api.flutter.dev/
+If you prefer video documentation, consider: https://www.youtube.com/c/flutterdev
 
-jobs:
-  build-android:
-    name: Build signed Android APK
-    runs-on: ubuntu-latest
+In order to run your application, type:
 
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
+  $ flutter run
 
-      - name: Find Flutter project
-        run: |
-          PUBSPEC_PATH=$(find . -maxdepth 5 -name pubspec.yaml | head -n 1)
+Your application code is in ./lib/main.dart.
 
-          if [ -z "$PUBSPEC_PATH" ]; then
-            echo "Could not find pubspec.yaml"
-            find . -maxdepth 4 -type f | sort
-            exit 1
-          fi
-
-          FLUTTER_PROJECT_DIR=$(dirname "$PUBSPEC_PATH")
-          echo "FLUTTER_PROJECT_DIR=$FLUTTER_PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Flutter project found at: $FLUTTER_PROJECT_DIR"
-
-      - name: Validate signing secrets
-        run: |
-          test -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" || (echo "Missing ANDROID_KEYSTORE_BASE64" && exit 1)
-          test -n "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" || (echo "Missing ANDROID_KEYSTORE_PASSWORD" && exit 1)
-          test -n "${{ secrets.ANDROID_KEY_ALIAS }}" || (echo "Missing ANDROID_KEY_ALIAS" && exit 1)
-          test -n "${{ secrets.ANDROID_KEY_PASSWORD }}" || (echo "Missing ANDROID_KEY_PASSWORD" && exit 1)
-          echo "Signing secrets found."
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Flutter version
-        run: flutter --version
-
-      - name: Install dependencies before Android regeneration
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: flutter pub get
-
-      - name: Recreate clean Android v2 embedding project
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: |
-          echo "Deleting old Android folder to remove v1 embedding..."
-          rm -rf android
-
-          echo "Creating clean Android v2 Flutter project..."
-          flutter create --platforms=android --project-name edutrack_app --org com.edutrack .
-
-          echo "Checking for old v1 embedding references..."
-          if grep -R "io.flutter.app.FlutterActivity\|io.flutter.app.FlutterApplication\|GeneratedPluginRegistrant" android -n; then
-            echo "Old Android v1 embedding reference still found."
-            exit 1
-          fi
-
-          echo "Android v2 project created successfully."
-
-      - name: Restore Android keystore
-        run: |
-          mkdir -p "$FLUTTER_PROJECT_DIR/android/app"
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | tr -d '\n\r ' | base64 --decode > "$FLUTTER_PROJECT_DIR/android/app/edutrack-release-key.jks"
-
-      - name: Create key.properties
-        run: |
-          cat > "$FLUTTER_PROJECT_DIR/android/key.properties" <<EOF
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          storeFile=edutrack-release-key.jks
-          EOF
-
-      - name: Patch Gradle release signing
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          gradle = Path("android/app/build.gradle")
-          if not gradle.exists():
-              gradle = Path("android/app/build.gradle.kts")
-
-          text = gradle.read_text()
-
-          if gradle.name.endswith(".kts"):
-              print("Kotlin Gradle detected.")
-              if "key.properties" not in text:
-                  text = """
-          import java.util.Properties
-          import java.io.FileInputStream
-
-          val keystoreProperties = Properties()
-          val keystorePropertiesFile = rootProject.file("key.properties")
-          if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-          }
-
-          """ + text
-
-              if "create(\"release\")" not in text:
-                  text = text.replace(
-                      "android {",
-                      """android {
-              signingConfigs {
-                  create("release") {
-                      keyAlias = keystoreProperties["keyAlias"] as String
-                      keyPassword = keystoreProperties["keyPassword"] as String
-                      storeFile = file(keystoreProperties["storeFile"] as String)
-                      storePassword = keystoreProperties["storePassword"] as String
-                  }
-              }
-          """,
-                      1
-                  )
-
-              text = text.replace(
-                  "signingConfig = signingConfigs.getByName(\"debug\")",
-                  "signingConfig = signingConfigs.getByName(\"release\")"
-              )
-
-          else:
-              print("Groovy Gradle detected.")
-              if "keystoreProperties" not in text:
-                  text = """
-          def keystoreProperties = new Properties()
-          def keystorePropertiesFile = rootProject.file('key.properties')
-          if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-          }
-
-          """ + text
-
-              if "signingConfigs" not in text:
-                  text = text.replace(
-                      "android {",
-                      """android {
-              signingConfigs {
-                  release {
-                      keyAlias keystoreProperties['keyAlias']
-                      keyPassword keystoreProperties['keyPassword']
-                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
-                      storePassword keystoreProperties['storePassword']
-                  }
-              }
-          """,
-                      1
-                  )
-
-              text = text.replace(
-                  "signingConfig signingConfigs.debug",
-                  "signingConfig signingConfigs.release"
-              )
-
-          gradle.write_text(text)
-          print(f"Patched {gradle}")
-          PY
-
-      - name: Fix default widget test
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: |
-          mkdir -p test
-          cat > test/widget_test.dart <<'EOF'
-          import 'package:flutter_test/flutter_test.dart';
-
-          void main() {
-            testWidgets('EduTrack placeholder widget test', (WidgetTester tester) async {
-              expect(true, isTrue);
-            });
-          }
-          EOF
-
-      - name: Analyze Flutter project
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      - name: Build signed release APK
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: flutter build apk --release
-
-      - name: Build release AAB
-        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: flutter build appbundle --release
-
-      - name: Upload signed APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: edutrack-signed-release-apk
-          path: ${{ env.FLUTTER_PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Upload release AAB artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: edutrack-release-aab
-          path: ${{ env.FLUTTER_PROJECT_DIR }}/build/app/outputs/bundle/release/app-release.aab
+Checking for old v1 embedding references...
+android/app/src/main/AndroidManifest.xml:29:             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java:15:public final class GeneratedPluginRegistrant {
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java:16:  private static final String TAG = "GeneratedPluginRegistrant";
+android/.gitignore:7:GeneratedPluginRegistrant.java
+Old Android v1 embedding reference still found.
+Error: Process completed with exit code 1.
