@@ -22,7 +22,6 @@ jobs:
 
           if [ -z "$PUBSPEC_PATH" ]; then
             echo "Could not find pubspec.yaml"
-            echo "Repo files:"
             find . -maxdepth 4 -type f | sort
             exit 1
           fi
@@ -33,26 +32,10 @@ jobs:
 
       - name: Validate signing secrets
         run: |
-          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-            echo "Missing secret: ANDROID_KEYSTORE_BASE64"
-            exit 1
-          fi
-
-          if [ -z "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" ]; then
-            echo "Missing secret: ANDROID_KEYSTORE_PASSWORD"
-            exit 1
-          fi
-
-          if [ -z "${{ secrets.ANDROID_KEY_ALIAS }}" ]; then
-            echo "Missing secret: ANDROID_KEY_ALIAS"
-            exit 1
-          fi
-
-          if [ -z "${{ secrets.ANDROID_KEY_PASSWORD }}" ]; then
-            echo "Missing secret: ANDROID_KEY_PASSWORD"
-            exit 1
-          fi
-
+          test -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" || (echo "Missing ANDROID_KEYSTORE_BASE64" && exit 1)
+          test -n "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" || (echo "Missing ANDROID_KEYSTORE_PASSWORD" && exit 1)
+          test -n "${{ secrets.ANDROID_KEY_ALIAS }}" || (echo "Missing ANDROID_KEY_ALIAS" && exit 1)
+          test -n "${{ secrets.ANDROID_KEY_PASSWORD }}" || (echo "Missing ANDROID_KEY_PASSWORD" && exit 1)
           echo "Signing secrets found."
 
       - name: Setup Java
@@ -70,6 +53,27 @@ jobs:
       - name: Flutter version
         run: flutter --version
 
+      - name: Install dependencies before Android regeneration
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
+        run: flutter pub get
+
+      - name: Recreate clean Android v2 embedding project
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
+        run: |
+          echo "Deleting old Android folder to remove v1 embedding..."
+          rm -rf android
+
+          echo "Creating clean Android v2 Flutter project..."
+          flutter create --platforms=android --project-name edutrack_app --org com.edutrack .
+
+          echo "Checking for old v1 embedding references..."
+          if grep -R "io.flutter.app.FlutterActivity\|io.flutter.app.FlutterApplication\|GeneratedPluginRegistrant" android -n; then
+            echo "Old Android v1 embedding reference still found."
+            exit 1
+          fi
+
+          echo "Android v2 project created successfully."
+
       - name: Restore Android keystore
         run: |
           mkdir -p "$FLUTTER_PROJECT_DIR/android/app"
@@ -84,15 +88,90 @@ jobs:
           storeFile=edutrack-release-key.jks
           EOF
 
-      - name: Check signing files
-        run: |
-          test -f "$FLUTTER_PROJECT_DIR/android/app/edutrack-release-key.jks"
-          test -f "$FLUTTER_PROJECT_DIR/android/key.properties"
-          echo "Keystore and key.properties created."
-
-      - name: Install dependencies
+      - name: Patch Gradle release signing
         working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
-        run: flutter pub get
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          gradle = Path("android/app/build.gradle")
+          if not gradle.exists():
+              gradle = Path("android/app/build.gradle.kts")
+
+          text = gradle.read_text()
+
+          if gradle.name.endswith(".kts"):
+              print("Kotlin Gradle detected.")
+              if "key.properties" not in text:
+                  text = """
+          import java.util.Properties
+          import java.io.FileInputStream
+
+          val keystoreProperties = Properties()
+          val keystorePropertiesFile = rootProject.file("key.properties")
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+          }
+
+          """ + text
+
+              if "create(\"release\")" not in text:
+                  text = text.replace(
+                      "android {",
+                      """android {
+              signingConfigs {
+                  create("release") {
+                      keyAlias = keystoreProperties["keyAlias"] as String
+                      keyPassword = keystoreProperties["keyPassword"] as String
+                      storeFile = file(keystoreProperties["storeFile"] as String)
+                      storePassword = keystoreProperties["storePassword"] as String
+                  }
+              }
+          """,
+                      1
+                  )
+
+              text = text.replace(
+                  "signingConfig = signingConfigs.getByName(\"debug\")",
+                  "signingConfig = signingConfigs.getByName(\"release\")"
+              )
+
+          else:
+              print("Groovy Gradle detected.")
+              if "keystoreProperties" not in text:
+                  text = """
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file('key.properties')
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
+
+          """ + text
+
+              if "signingConfigs" not in text:
+                  text = text.replace(
+                      "android {",
+                      """android {
+              signingConfigs {
+                  release {
+                      keyAlias keystoreProperties['keyAlias']
+                      keyPassword keystoreProperties['keyPassword']
+                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                      storePassword keystoreProperties['storePassword']
+                  }
+              }
+          """,
+                      1
+                  )
+
+              text = text.replace(
+                  "signingConfig signingConfigs.debug",
+                  "signingConfig signingConfigs.release"
+              )
+
+          gradle.write_text(text)
+          print(f"Patched {gradle}")
+          PY
 
       - name: Fix default widget test
         working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
