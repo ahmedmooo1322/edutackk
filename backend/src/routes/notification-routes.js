@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { listNotifications, markRead } from '../controllers/notification-controller.js';
+import { authenticate } from '../middleware/auth.js';
+import { asyncHandler } from '../middleware/async-handler.js';
+import { validate } from '../middleware/validate.js';
+import { paginateSchema } from '../validators/schemas.js';
+export const notificationRouter = Router();
+notificationRouter.use(authenticate);
+notificationRouter.get('/', validate(paginateSchema), asyncHandler(listNotifications));
+notificationRouter.patch('/:notificationId/read', asyncHandler(markRead));
