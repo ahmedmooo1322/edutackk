@@ -1,2 +1,0 @@
--keep class com.it_nomads.fluttersecurestorage.** { *; }
-

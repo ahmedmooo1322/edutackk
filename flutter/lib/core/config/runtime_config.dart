@@ -1,1 +1,0 @@
-class RuntimeConfig { const RuntimeConfig({required this.coinName, required this.minStake, required this.maxStake}); final String coinName; final int minStake; final int maxStake; factory RuntimeConfig.fromJson(Map<String, dynamic> json) => RuntimeConfig(coinName: json['coinName'] as String, minStake: json['minGameEntry'] as int, maxStake: json['maxGameEntry'] as int); }
